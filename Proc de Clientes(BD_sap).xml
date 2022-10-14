@@ -1,0 +1,1547 @@
+PROCEDURE               prc_dlt_rise_c2c_contrato_venda IS
+  /*
+  * Name...: PRC_DLT_RISE_C2C_CONTRATO_VENDA
+  * Purpose: Gerar o arquivo DLT_RISE_C2C_Contrato de venda.XML para integração
+  *          de cadastro de CONTRATOS do SQLTime para o SAP.
+  * Author.: Bruno Padilha 
+  * Created: 15-jun-2022
+  *----------------------------------------------------------------------
+  * Last Changes
+  *
+  * Date:   /   /             Author:
+  * Alt.:
+  *
+  */
+  v_reg_clob      CLOB;
+  l_amt           NUMBER DEFAULT 4000;
+  l_offset        NUMBER DEFAULT 1;
+  l_length        NUMBER;
+  v_total_lines   NUMBER;
+  v_register      varchar2(32767);
+  v_file          utl_file.FILE_TYPE;
+  --
+  -- Cursor de dados 
+  CURSOR c1 IS
+    SELECT a.vendor_n
+
+      FROM interface_sap.ap_vendor_master a;
+  --
+  -- Cursor de dados  VENDEDOR COMP
+  CURSOR c2 IS
+    SELECT a.vendor_no
+          
+      FROM interface_sap.ap_vendor_comp a;
+  --
+  -- Cursor de dados CT_ADDR_COD
+  CURSOR c3 IS
+    SELECT a.contrato_id
+        
+      FROM interface_sap.ct_addr_cod a;
+  --
+  -- Cursor de dados CONTRATO VENDAS ITEM PARC
+  CURSOR c4 IS
+    SELECT a.contrato_id
+          ,a.item_no
+          ,a.func_parc
+          ,a.cliente
+      FROM interface_sap.tb_contrato_vendas_item_parc a;
+  --
+  -- Função que cria a tag <Styles> completa.
+  -- Deve ser a 7ª a ser chamada.
+  FUNCTION fnc_Styles RETURN VARCHAR2
+  IS
+     v_aux varchar2(32000);
+  BEGIN
+     v_aux := '  <Styles>' ||CHR(13)||CHR(10)||
+              '    <Style ss:ID="s004">' ||CHR(13)||CHR(10)||
+              '      <Font ss:FontName="Arial" x:Family="Swiss" ss:Color="#000000"/>' ||CHR(13)||CHR(10)||
+              '      <Interior/>' ||CHR(13)||CHR(10)||
+              '      <NumberFormat ss:Format="0"/>' ||CHR(13)||CHR(10)||
+              '      <Protection ss:Protected="0"/>' ||CHR(13)||CHR(10)||
+              '    </Style>' ||CHR(13)||CHR(10)||
+              '    <Style ss:ID="s001">' ||CHR(13)||CHR(10)||
+              '      <Font ss:FontName="Arial" x:Family="Swiss" ss:Color="#000000"/>' ||CHR(13)||CHR(10)||
+              '      <Interior/>' ||CHR(13)||CHR(10)||
+              '      <NumberFormat ss:Format="0"/>' ||CHR(13)||CHR(10)||
+              '      <Protection ss:Protected="0"/>' ||CHR(13)||CHR(10)||
+              '    </Style>' ||CHR(13)||CHR(10)||
+              '    <Style ss:ID="s002">' ||CHR(13)||CHR(10)||
+              '      <Font ss:FontName="Arial" x:Family="Swiss" ss:Color="#000000"/>' ||CHR(13)||CHR(10)||
+              '      <Interior/>' ||CHR(13)||CHR(10)||
+              '      <NumberFormat ss:Format="0.000"/>' ||CHR(13)||CHR(10)||
+              '      <Protection ss:Protected="0"/>' ||CHR(13)||CHR(10)||
+              '    </Style>' ||CHR(13)||CHR(10)||
+              '    <Style ss:ID="s003">' ||CHR(13)||CHR(10)||
+              '      <Font ss:FontName="Arial" x:Family="Swiss" ss:Color="#000000"/>' ||CHR(13)||CHR(10)||
+              '      <Interior/>' ||CHR(13)||CHR(10)||
+              '      <NumberFormat ss:Format="0.00"/>' ||CHR(13)||CHR(10)||
+              '      <Protection ss:Protected="0"/>' ||CHR(13)||CHR(10)||
+              '    </Style>' ||CHR(13)||CHR(10)||
+              '   <Style ss:ID="TITLE">' ||CHR(13)||CHR(10)||
+              '    <Alignment ss:Horizontal="Left" ss:Vertical="Bottom"/>' ||CHR(13)||CHR(10)||
+              '    <Font ss:FontName="Arial" x:Family="Swiss" ss:Size="20" ss:Color="#EFFEF9"' ||CHR(13)||CHR(10)||
+              '     ss:Bold="1" ss:Italic="1"/>' ||CHR(13)||CHR(10)||
+              '    <Interior ss:Color="#427CAC" ss:Pattern="Solid"/>' ||CHR(13)||CHR(10)||
+              '   </Style>' ||CHR(13)||CHR(10)||
+              '   <Style ss:ID="VERSION">' ||CHR(13)||CHR(10)||
+              '    <Alignment ss:Horizontal="Left" ss:Vertical="Bottom"/>' ||CHR(13)||CHR(10)||
+              '    <Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="8" ss:Color="#EFFEF9"/>' ||CHR(13)||CHR(10)||
+              '    <Interior ss:Color="#427CAC" ss:Pattern="Solid"/>' ||CHR(13)||CHR(10)||
+              '   </Style>' ||CHR(13)||CHR(10)||
+              '   <Style ss:ID="INFORMATION">' ||CHR(13)||CHR(10)||
+              '    <Alignment ss:Horizontal="Left" ss:Vertical="Bottom" ss:WrapText="1"/>' ||CHR(13)||CHR(10)||
+              '    <Borders>' ||CHR(13)||CHR(10)||
+              '     <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>' ||CHR(13)||CHR(10)||
+              '    </Borders>' ||CHR(13)||CHR(10)||
+              '     <Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"/>' ||CHR(13)||CHR(10)||
+              '    <Interior ss:Color="#BFBFBF" ss:Pattern="Solid"/>' ||CHR(13)||CHR(10)||
+              '    <NumberFormat/>' ||CHR(13)||CHR(10)||
+              '    <Protection/>' ||CHR(13)||CHR(10)||
+              '   </Style>' ||CHR(13)||CHR(10)||
+              '   <Style ss:ID="BACKGROUND">' ||CHR(13)||CHR(10)||
+              '    <Interior ss:Color="#BFBFBF" ss:Pattern="Solid"/>' ||CHR(13)||CHR(10)||
+              '   </Style>' ||CHR(13)||CHR(10)||
+              '   <Style ss:ID="DOCU">' ||CHR(13)||CHR(10)||
+              '    <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>' ||CHR(13)||CHR(10)||
+              '   </Style>' ||CHR(13)||CHR(10)||
+              '   <Style ss:ID="C_HEADER1">' ||CHR(13)||CHR(10)||
+              '    <Alignment ss:Horizontal="Center" ss:Vertical="Top"/>' ||CHR(13)||CHR(10)||
+              '    <Borders>' ||CHR(13)||CHR(10)||
+              '     <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>' ||CHR(13)||CHR(10)||
+              '     <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>' ||CHR(13)||CHR(10)||
+              '     <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>' ||CHR(13)||CHR(10)||
+              '     <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>' ||CHR(13)||CHR(10)||
+              '    </Borders>' ||CHR(13)||CHR(10)||
+              '    <Font ss:FontName="Arial" x:Family="Swiss" ss:Color="#000000" ss:Bold="1"/>' ||CHR(13)||CHR(10)||
+              '    <Interior ss:Color="#EFF4F9" ss:Pattern="Solid"/>' ||CHR(13)||CHR(10)||
+              '    <Protection/>' ||CHR(13)||CHR(10)||
+              '   </Style>' ||CHR(13)||CHR(10)||
+              '   <Style ss:ID="C_HEADER2">' ||CHR(13)||CHR(10)||
+              '    <Alignment ss:Horizontal="Center" ss:Vertical="Top" ss:WrapText="1"/>' ||CHR(13)||CHR(10)||
+              '    <Borders>' ||CHR(13)||CHR(10)||
+              '     <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>' ||CHR(13)||CHR(10)||
+              '     <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>' ||CHR(13)||CHR(10)||
+              '     <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>' ||CHR(13)||CHR(10)||
+              '     <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>' ||CHR(13)||CHR(10)||
+              '    </Borders>' ||CHR(13)||CHR(10)||
+              '    <Font ss:FontName="Arial" x:Family="Swiss" ss:Size="8" ss:Color="#000000" ss:Bold="0"/>' ||CHR(13)||CHR(10)||
+              '    <Interior ss:Color="#EFF4F9" ss:Pattern="Solid"/>' ||CHR(13)||CHR(10)||
+              '    <Protection/>' ||CHR(13)||CHR(10)||
+              '   </Style>' ||CHR(13)||CHR(10)||
+              '   <Style ss:ID="FIELDHEADER">' ||CHR(13)||CHR(10)||
+              '    <Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>' ||CHR(13)||CHR(10)||
+              '    <Borders>' ||CHR(13)||CHR(10)||
+              '     <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>' ||CHR(13)||CHR(10)||
+              '     <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>' ||CHR(13)||CHR(10)||
+              '     <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>' ||CHR(13)||CHR(10)||
+              '     <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>' ||CHR(13)||CHR(10)||
+              '    </Borders>' ||CHR(13)||CHR(10)||
+              '    <Font ss:FontName="Arial" x:Family="Swiss" ss:Color="#EFFEF9"/>' ||CHR(13)||CHR(10)||
+              '    <Interior ss:Color="#427CAC" ss:Pattern="Solid"/>' ||CHR(13)||CHR(10)||
+              '    <Protection/>' ||CHR(13)||CHR(10)||
+              '   </Style>' ||CHR(13)||CHR(10)||
+              '   <Style ss:ID="FIELDHEADERMAND">' ||CHR(13)||CHR(10)||
+              '    <Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>' ||CHR(13)||CHR(10)||
+              '    <Borders>' ||CHR(13)||CHR(10)||
+              '     <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>' ||CHR(13)||CHR(10)||
+              '     <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>' ||CHR(13)||CHR(10)||
+              '     <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>' ||CHR(13)||CHR(10)||
+              '     <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>' ||CHR(13)||CHR(10)||
+              '    </Borders>' ||CHR(13)||CHR(10)||
+              '    <Font ss:FontName="Arial" x:Family="Swiss" ss:Color="#EFFEF9"/>' ||CHR(13)||CHR(10)||
+              '    <Interior ss:Color="#F0AB00" ss:Pattern="Solid"/>' ||CHR(13)||CHR(10)||
+              '    <Protection/>' ||CHR(13)||CHR(10)||
+              '   </Style>' ||CHR(13)||CHR(10)||
+              '   <Style ss:ID="FIELDLIST">' ||CHR(13)||CHR(10)||
+              '    <Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>' ||CHR(13)||CHR(10)||
+              '    <Borders>' ||CHR(13)||CHR(10)||
+              '     <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>' ||CHR(13)||CHR(10)||
+              '     <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>' ||CHR(13)||CHR(10)||
+              '     <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>' ||CHR(13)||CHR(10)||
+              '     <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>' ||CHR(13)||CHR(10)||
+              '    </Borders>' ||CHR(13)||CHR(10)||
+              '    <Font ss:FontName="Arial" x:Family="Swiss" ss:Color="#000000"/>' ||CHR(13)||CHR(10)||
+              '    <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>' ||CHR(13)||CHR(10)||
+              '    <Protection/>' ||CHR(13)||CHR(10)||
+              '   </Style>' ||CHR(13)||CHR(10)||
+              '    <Style ss:ID="FIELD">' ||CHR(13)||CHR(10)||
+              '      <Font ss:FontName="Arial" x:Family="Swiss" ss:Color="#000000"/>' ||CHR(13)||CHR(10)||
+              '      <Interior/>' ||CHR(13)||CHR(10)||
+              '      <NumberFormat ss:Format="@"/>' ||CHR(13)||CHR(10)||
+              '      <Protection ss:Protected="0"/>' ||CHR(13)||CHR(10)||
+              '    </Style>' ||CHR(13)||CHR(10)||
+              '    <Style ss:ID="DATE">' ||CHR(13)||CHR(10)||
+              '      <Font ss:FontName="Arial" x:Family="Swiss" ss:Color="#000000"/>' ||CHR(13)||CHR(10)||
+              '      <Interior/>' ||CHR(13)||CHR(10)||
+              '      <NumberFormat ss:Format="dd\.mm\.yyyy"/>' ||CHR(13)||CHR(10)||
+              '      <Protection ss:Protected="0"/>' ||CHR(13)||CHR(10)||
+              '    </Style>' ||CHR(13)||CHR(10)||
+              '    <Style ss:ID="TIME">' ||CHR(13)||CHR(10)||
+              '      <Font ss:FontName="Arial" x:Family="Swiss"/>' ||CHR(13)||CHR(10)||
+              '      <Interior/>' ||CHR(13)||CHR(10)||
+              '      <NumberFormat ss:Format="hh:mm:ss"/>' ||CHR(13)||CHR(10)||
+              '      <Protection ss:Protected="0"/>' ||CHR(13)||CHR(10)||
+              '    </Style>' ||CHR(13)||CHR(10)||
+              '    <Style ss:ID="DATETIME">' ||CHR(13)||CHR(10)||
+              '      <Font ss:FontName="Arial" x:Family="Swiss" ss:Color="#000000"/>' ||CHR(13)||CHR(10)||
+              '      <Interior/>' ||CHR(13)||CHR(10)||
+              '      <NumberFormat ss:Format="yyyy\-mm\-dd\ hh:mm:ss"/>' ||CHR(13)||CHR(10)||
+              '      <Protection ss:Protected="0"/>' ||CHR(13)||CHR(10)||
+              '    </Style>' ||CHR(13)||CHR(10)||
+              '    <Style ss:ID="INTRO">' ||CHR(13)||CHR(10)||
+              '      <Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>' ||CHR(13)||CHR(10)||
+              '      <Font ss:FontName="Arial" x:Family="Swiss" ss:Color="#000000"/>' ||CHR(13)||CHR(10)||
+              '      <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>' ||CHR(13)||CHR(10)||
+              '      <NumberFormat ss:Format="@"/>' ||CHR(13)||CHR(10)||
+              '      <Protection ss:Protected="0"/>' ||CHR(13)||CHR(10)||
+              '    </Style>' ||CHR(13)||CHR(10)||
+              '    <Style ss:ID="INTRO_UT">' ||CHR(13)||CHR(10)||
+              '      <Alignment ss:Horizontal="Left" ss:Vertical="Top" ss:WrapText="1"/>' ||CHR(13)||CHR(10)||
+              '      <Font ss:FontName="Arial" x:Family="Swiss" ss:Color="#000000" ss:Bold="1"/>' ||CHR(13)||CHR(10)||
+              '      <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>' ||CHR(13)||CHR(10)||
+              '      <NumberFormat ss:Format="@"/>' ||CHR(13)||CHR(10)||
+              '      <Protection ss:Protected="0"/>' ||CHR(13)||CHR(10)||
+              '    </Style>' ||CHR(13)||CHR(10)||
+              '  </Styles>' ||CHR(13); -- na última linha colocar somente CHR(13), pois o put_line adiciona o CHR(10
+     --
+     RETURN v_aux;
+  END fnc_Styles;
+  --
+  -- Função que cria a tag <Worksheet ss:Name="Lista de campos"> completa.
+  FUNCTION fnc_WorksheetListaCampos RETURN clob
+  IS
+    v_aux clob;
+  BEGIN
+     v_aux := ' <Worksheet ss:Name="Lista de campos" ss:Protected="1">' ||CHR(13)||CHR(10)||
+              '  <Table ss:ExpandedColumnCount="11" x:FullColumns="1" x:FullRows="1" ss:StyleID="BACKGROUND" ss:DefaultRowHeight="15">' ||CHR(13)||CHR(10)||
+              '   <Column ss:AutoFitWidth="0" ss:Width="14.25"/>' ||CHR(13)||CHR(10)||
+              '   <Column ss:StyleID="BACKGROUND" ss:AutoFitWidth="0" ss:Width="66.75"/>' ||CHR(13)||CHR(10)||
+              '   <Column ss:StyleID="BACKGROUND" ss:AutoFitWidth="0" ss:Width="87.75"/>' ||CHR(13)||CHR(10)||
+              '   <Column ss:StyleID="BACKGROUND" ss:AutoFitWidth="0" ss:Width="171.75"/>' ||CHR(13)||CHR(10)||
+              '   <Column ss:StyleID="BACKGROUND" ss:AutoFitWidth="0" ss:Width="135"/>' ||CHR(13)||CHR(10)||
+              '   <Column ss:StyleID="BACKGROUND" ss:AutoFitWidth="0" ss:Width="82.5"/>' ||CHR(13)||CHR(10)||
+              '   <Column ss:StyleID="BACKGROUND" ss:AutoFitWidth="0" ss:Width="56.25" ss:Span="1"/>' ||CHR(13)||CHR(10)||
+              '   <Column ss:Index="9" ss:StyleID="BACKGROUND" ss:Hidden="1" ss:AutoFitWidth="0" ss:Width="56.25" ss:Span="1"/>' ||CHR(13)||CHR(10)||
+              '   <Column ss:Index="11" ss:AutoFitWidth="0" ss:Width="14.25"/>' ||CHR(13)||CHR(10)||
+              '   <Row ss:AutoFitHeight="0" ss:Height="30" ss:StyleID="TITLE">' ||CHR(13)||CHR(10)||
+              '    <Cell ss:MergeAcross="8"><Data ss:Type="String">Lista de campos para objeto de migração: SD - Contrato de venda</Data><NamedCell ss:Name="Fields"/></Cell>' ||CHR(13)||CHR(10)||
+              '   </Row>' ||CHR(13)||CHR(10)||
+              '   <Row ss:AutoFitHeight="0" ss:StyleID="VERSION">' ||CHR(13)||CHR(10)||
+              '    <Cell ss:MergeAcross="8"><Data ss:Type="String">Version S4CORE 106  - 26.04.2022 © Copyright SAP SE. All rights reserved.</Data></Cell>' ||CHR(13)||CHR(10)||
+              '   </Row>' ||CHR(13)||CHR(10)||
+              '   <Row ss:AutoFitHeight="0" ss:StyleID="INFORMATION">' ||CHR(13)||CHR(10)||
+              '    <Cell ss:Index="2" ss:MergeAcross="6"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '   </Row>' ||CHR(13)||CHR(10)||
+              '   <Row ss:Index="4">' ||CHR(13)||CHR(10)||
+              '    <Cell ss:Index="2" ss:StyleID="FIELDHEADER"><Data ss:Type="String">Nome da folha</Data></Cell>' ||CHR(13)||CHR(10)||
+              '    <Cell ss:StyleID="FIELDHEADER"><Data ss:Type="String">Nome do grupo</Data></Cell>' ||CHR(13)||CHR(10)||
+              '    <Cell ss:StyleID="FIELDHEADER"><Data ss:Type="String">Descrição do campo</Data></Cell>' ||CHR(13)||CHR(10)||
+              '    <Cell ss:StyleID="FIELDHEADER"><Data ss:Type="String">Importância</Data></Cell>' ||CHR(13)||CHR(10)||
+              '    <Cell ss:StyleID="FIELDHEADER"><Data ss:Type="String">Tipo</Data></Cell>' ||CHR(13)||CHR(10)||
+              '    <Cell ss:StyleID="FIELDHEADER"><Data ss:Type="String">Comprimento</Data></Cell>' ||CHR(13)||CHR(10)||
+              '    <Cell ss:StyleID="FIELDHEADER"><Data ss:Type="String">Decimal</Data></Cell>' ||CHR(13)||CHR(10)||
+              '    <Cell ss:StyleID="FIELDHEADER"><Data ss:Type="String">Estrutura SAP</Data></Cell>' ||CHR(13)||CHR(10)||
+              '    <Cell ss:StyleID="FIELDHEADER"><Data ss:Type="String">Campo SAP</Data></Cell>' ||CHR(13)||CHR(10)||
+              '   </Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="2" ss:MergeAcross="8" ss:StyleID="FIELDHEADERMAND"><Data ss:Type="String">Cabeçalho (obrigatório)</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="2" ss:MergeDown="0018" ss:StyleID="FIELDLIST"/>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="3" ss:MergeDown="0000" ss:StyleID="FIELDLIST"><Data ss:Type="String">Chave</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">ID do documento de contrato legado</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String">obrigatório para folha</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_HEADER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">VBELN</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="3" ss:MergeDown="0000" ss:StyleID="FIELDLIST"><Data ss:Type="String">Dados principal</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Tipo de contrato</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String">obrigatório para folha</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_HEADER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">COART</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="3" ss:MergeDown="0004" ss:StyleID="FIELDLIST"><Data ss:Type="String">Dados organizacionais</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Organização de vendas</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String">obrigatório para folha</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_HEADER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">VKORG</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Canal de distribuição</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String">obrigatório para folha</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_HEADER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">VTWEG</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Divisão</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String">obrigatório para folha</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_HEADER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">SPART</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Escritório de vendas</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_HEADER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">VKBUR</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Equipe de vendas</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_HEADER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">VKGRP</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="3" ss:MergeDown="0001" ss:StyleID="FIELDLIST"><Data ss:Type="String">Partes principais</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Emissor da ordem</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String">obrigatório para folha</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_HEADER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">SOLD_TO</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Recebedor da mercadoria</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_HEADER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">SHIP_TO</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="3" ss:MergeDown="0001" ss:StyleID="FIELDLIST"><Data ss:Type="String">Referência do cliente</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Referência de cliente</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">20    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_HEADER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">BSTNK</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Data de referência de cliente</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Data</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_HEADER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">BSTDK</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="3" ss:MergeDown="0004" ss:StyleID="FIELDLIST"><Data ss:Type="String">Dados comerciais</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Descrição</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">40    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_HEADER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">KTEXT</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Início da validade</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Data</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_HEADER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">GUEBG</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Fim da validade</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Data</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_HEADER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">GUEEN</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Data do preço</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Data</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_HEADER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">PRSDT</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Bloqueio de faturamento</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_HEADER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">FAKSK</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="3" ss:MergeDown="0001" ss:StyleID="FIELDLIST"><Data ss:Type="String">Dados de vendas</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Motivo da ordem</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_HEADER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">AUGRU</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Condição de expedição</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_HEADER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">VSBED</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="3" ss:MergeDown="0000" ss:StyleID="FIELDLIST"><Data ss:Type="String">Classificação contábil</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Elemento PEP</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_HEADER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">WBS_ELEM</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="2" ss:MergeAcross="8" ss:StyleID="FIELDHEADER"><Data ss:Type="String">Parceiros de cabeçalho adicional</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="2" ss:MergeDown="0002" ss:StyleID="FIELDLIST"/>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="3" ss:MergeDown="0000" ss:StyleID="FIELDLIST"><Data ss:Type="String">Chave</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">ID do documento de contrato legado</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String">obrigatório para folha</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_HPARTNER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">VBELN</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="3" ss:MergeDown="0001" ss:StyleID="FIELDLIST"><Data ss:Type="String">Parcs.cabeç.</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Função de parceiro</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String">obrigatório para folha</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_HPARTNER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">PARVW</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Nº do cliente</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String">obrigatório para folha</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_HPARTNER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">KUNNR</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="2" ss:MergeAcross="8" ss:StyleID="FIELDHEADERMAND"><Data ss:Type="String">Item (obrigatório)</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="2" ss:MergeDown="0008" ss:StyleID="FIELDLIST"/>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="3" ss:MergeDown="0001" ss:StyleID="FIELDLIST"><Data ss:Type="String">Chave</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">ID do documento de contrato legado</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String">obrigatório para folha</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_ITEM</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">VBELN</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Número do item do documento de contrato</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String">obrigatório para folha</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Número</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">6     </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_ITEM</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">POSNR</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="3" ss:MergeDown="0000" ss:StyleID="FIELDLIST"><Data ss:Type="String">Material</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Número do produto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_ITEM</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">MATNR</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="3" ss:MergeDown="0001" ss:StyleID="FIELDLIST"><Data ss:Type="String">Contrato em qtd.</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Quantidade prevista</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Número</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">13    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String">3     </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_ITEM</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">ZMENG</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Unidade de medida</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_ITEM</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">ZIEME</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="3" ss:MergeDown="0001" ss:StyleID="FIELDLIST"><Data ss:Type="String">Contrato em valor</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Valor de destino</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Número</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">28    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String">2     </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_ITEM</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">ZWERT</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Moeda</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_ITEM</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">WAERK</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="3" ss:MergeDown="0001" ss:StyleID="FIELDLIST"><Data ss:Type="String">Classificação contábil</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Centro de lucro</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_ITEM</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">PROFIT_CTR</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Elemento PEP</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_ITEM</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">WBS_ELEM</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="2" ss:MergeAcross="8" ss:StyleID="FIELDHEADER"><Data ss:Type="String">Parceiros item</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="2" ss:MergeDown="0003" ss:StyleID="FIELDLIST"/>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="3" ss:MergeDown="0001" ss:StyleID="FIELDLIST"><Data ss:Type="String">Chave</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">ID do documento de contrato legado</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String">obrigatório para folha</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_IPARTNER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">VBELN</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Número do item do documento de contrato</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String">obrigatório para folha</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Número</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">6     </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_IPARTNER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">POSNR</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="3" ss:MergeDown="0001" ss:StyleID="FIELDLIST"><Data ss:Type="String">Parceiro de item</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Função de parceiro</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String">obrigatório para folha</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_IPARTNER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">PARVW</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="4" ss:StyleID="FIELDLIST"><Data ss:Type="String">Nº do cliente</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="5" ss:StyleID="FIELDLIST"><Data ss:Type="String">obrigatório para folha</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="6" ss:StyleID="FIELDLIST"><Data ss:Type="String">Texto</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="7" ss:StyleID="FIELDLIST"><Data ss:Type="String">80    </Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="8" ss:StyleID="FIELDLIST"><Data ss:Type="String"></Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="9" ss:StyleID="FIELDLIST"><Data ss:Type="String">S_SDCO_IPARTNER</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="10" ss:StyleID="FIELDLIST"><Data ss:Type="String">KUNNR</Data></Cell>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '<Row>' ||CHR(13)||CHR(10)||
+              '</Row>' ||CHR(13)||CHR(10)||
+              '  </Table>' ||CHR(13)||CHR(10)||
+              '  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">' ||CHR(13)||CHR(10)||
+              '   <PageSetup>' ||CHR(13)||CHR(10)||
+              '    <Header x:Margin="0.3"/>' ||CHR(13)||CHR(10)||
+              '    <Footer x:Margin="0.3"/>' ||CHR(13)||CHR(10)||
+              '    <PageMargins x:Bottom="0.75" x:Left="0.7" x:Right="0.7" x:Top="0.75"/>' ||CHR(13)||CHR(10)||
+              '   </PageSetup>' ||CHR(13)||CHR(10)||
+              '   <FitToPage/>' ||CHR(13)||CHR(10)||
+              '   <Print>' ||CHR(13)||CHR(10)||
+              '    <FitHeight>99</FitHeight>' ||CHR(13)||CHR(10)||
+              '    <ValidPrinterInfo/>' ||CHR(13)||CHR(10)||
+              '    <PaperSizeIndex>9</PaperSizeIndex>' ||CHR(13)||CHR(10)||
+              '    <HorizontalResolution>600</HorizontalResolution>' ||CHR(13)||CHR(10)||
+              '    <VerticalResolution>600</VerticalResolution>' ||CHR(13)||CHR(10)||
+              '   </Print>' ||CHR(13)||CHR(10)||
+              '   <TabColorIndex>9</TabColorIndex>' ||CHR(13)||CHR(10)||
+              '   <FreezePanes/>' ||CHR(13)||CHR(10)||
+              '   <FrozenNoSplit/>' ||CHR(13)||CHR(10)||
+              '   <SplitHorizontal>4</SplitHorizontal>' ||CHR(13)||CHR(10)||
+              '   <TopRowBottomPane>4</TopRowBottomPane>' ||CHR(13)||CHR(10)||
+              '   <ActivePane>2</ActivePane>' ||CHR(13)||CHR(10)||
+              '   <Panes>' ||CHR(13)||CHR(10)||
+              '    <Pane>' ||CHR(13)||CHR(10)||
+              '     <Number>3</Number>' ||CHR(13)||CHR(10)||
+              '    </Pane>' ||CHR(13)||CHR(10)||
+              '    <Pane>' ||CHR(13)||CHR(10)||
+              '     <Number>2</Number>' ||CHR(13)||CHR(10)||
+              '     <ActiveRow>2</ActiveRow>' ||CHR(13)||CHR(10)||
+              '    </Pane>' ||CHR(13)||CHR(10)||
+              '   </Panes>' ||CHR(13)||CHR(10)||
+              '   <ProtectObjects>True</ProtectObjects>' ||CHR(13)||CHR(10)||
+              '   <ProtectScenarios>True</ProtectScenarios>' ||CHR(13)||CHR(10)||
+              '   <AllowSizeCols/>' ||CHR(13)||CHR(10)||
+              '   <AllowSizeRows/>' ||CHR(13)||CHR(10)||
+              '  </WorksheetOptions>' ||CHR(13)||CHR(10)||
+              ' </Worksheet>' ||CHR(13); -- na última linha colocar somente CHR(13), pois o put_line adiciona o CHR(10)
+     --
+     RETURN v_aux;
+  END fnc_WorksheetListaCampos;
+  --
+  -- Worksheet Cabeçalho
+  -- Função que inicia a Worksheet Cabeçalho, interrompendo a criação
+  -- no ponto onde deve entrar a inclusão dos dados.
+  FUNCTION fnc_InitWorksheetCabecalho(p_ExpandedRowCount NUMBER) RETURN VARCHAR2
+  IS
+    -- Para cada DLT, verificar se o ExpandedRowCount é 8. A variável v_ExpandedRowCount
+    -- deve iniciar com o valor do ExpandedRowCount do DLT quando está vazio.
+    v_ExpandedRowCount NUMBER(10) := 8;
+    v_aux VARCHAR2(32767);
+  BEGIN
+     v_ExpandedRowCount := (v_ExpandedRowCount + p_ExpandedRowCount);
+     --
+     v_aux := '  <Worksheet ss:Name="Cabeçalho" ss:Protected="1">' ||CHR(13)||CHR(10)||
+              '    <Table ss:ExpandedColumnCount="999" ss:ExpandedRowCount="'||v_ExpandedRowCount||'" x:FullColumns="1" x:FullRows="1" ss:StyleID="BACKGROUND" ss:DefaultRowHeight="15">' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="DATE" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="DATE" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="DATE" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="DATE" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:Height="30" ss:StyleID="TITLE">' ||CHR(13)||CHR(10)||
+              '        <Cell ss:MergeAcross="14">' ||CHR(13)||CHR(10)||
+              '          <Data ss:Type="String">Dados de origem para objeto de migração:  SD - Contrato de venda</Data>' ||CHR(13)||CHR(10)||
+              '        </Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:StyleID="VERSION">' ||CHR(13)||CHR(10)||
+              '        <Cell ss:MergeAcross="14">' ||CHR(13)||CHR(10)||
+              '          <Data ss:Type="String">Version S4CORE 106  - 26.04.2022 © Copyright SAP SE. All rights reserved.</Data>' ||CHR(13)||CHR(10)||
+              '        </Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:Height="12" ss:StyleID="BACKGROUND">' ||CHR(13)||CHR(10)||
+              '        <Cell ss:MergeAcross="14"/>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:Height="14.0625" ss:Hidden="1" ss:StyleID="BACKGROUND">' ||CHR(13)||CHR(10)||
+              '        <Cell>' ||CHR(13)||CHR(10)||
+              '          <Data ss:Type="String">S_SDCO_HEADER</Data>' ||CHR(13)||CHR(10)||
+              '        </Cell>' ||CHR(13)||CHR(10)||
+              '        <Cell/>' ||CHR(13)||CHR(10)||
+              '        <Cell/>' ||CHR(13)||CHR(10)||
+              '        <Cell/>' ||CHR(13)||CHR(10)||
+              '        <Cell/>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:Hidden="1">' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="001"><Data ss:Type="String">VBELN</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="002"><Data ss:Type="String">COART</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="003"><Data ss:Type="String">VKORG</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="004"><Data ss:Type="String">VTWEG</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="005"><Data ss:Type="String">SPART</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="006"><Data ss:Type="String">VKBUR</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="007"><Data ss:Type="String">VKGRP</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="008"><Data ss:Type="String">SOLD_TO</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="009"><Data ss:Type="String">SHIP_TO</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="010"><Data ss:Type="String">BSTNK</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="011"><Data ss:Type="String">BSTDK</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="012"><Data ss:Type="String">KTEXT</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="013"><Data ss:Type="String">GUEBG</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="014"><Data ss:Type="String">GUEEN</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="015"><Data ss:Type="String">PRSDT</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="016"><Data ss:Type="String">FAKSK</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="017"><Data ss:Type="String">AUGRU</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="018"><Data ss:Type="String">VSBED</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="019"><Data ss:Type="String">WBS_ELEM</Data></Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:Hidden="1">' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="001"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="002"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="003"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="004"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="005"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="006"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="007"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="008"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="009"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="010"><Data ss:Type="String">ETE;20;0;C;20;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="011"><Data ss:Type="String">EDA;8;0;D;8;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="012"><Data ss:Type="String">ETE;40;0;C;40;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="013"><Data ss:Type="String">EDA;8;0;D;8;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="014"><Data ss:Type="String">EDA;8;0;D;8;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="015"><Data ss:Type="String">EDA;8;0;D;8;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="016"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="017"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="018"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="019"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0">' ||CHR(13)||CHR(10)||
+              '<Cell ss:MergeAcross="000" ss:StyleID="C_HEADER1"><Data ss:Type="String">Chave</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:MergeAcross="000" ss:StyleID="C_HEADER1"><Data ss:Type="String">Dados principal</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:MergeAcross="004" ss:StyleID="C_HEADER1"><Data ss:Type="String">Dados organizacionais</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:MergeAcross="001" ss:StyleID="C_HEADER1"><Data ss:Type="String">Partes principais</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:MergeAcross="001" ss:StyleID="C_HEADER1"><Data ss:Type="String">Referência do cliente</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:MergeAcross="004" ss:StyleID="C_HEADER1"><Data ss:Type="String">Dados comerciais</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:MergeAcross="001" ss:StyleID="C_HEADER1"><Data ss:Type="String">Dados de vendas</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:MergeAcross="000" ss:StyleID="C_HEADER1"><Data ss:Type="String">Classificação contábil</Data></Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0">' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="001"><Data ss:Type="String">ID do documento de contrato legado*&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="002"><Data ss:Type="String">Tipo de contrato*&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="003"><Data ss:Type="String">Organização de vendas*&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="004"><Data ss:Type="String">Canal de distribuição*&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="005"><Data ss:Type="String">Divisão*&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="006"><Data ss:Type="String">Escritório de vendas&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="007"><Data ss:Type="String">Equipe de vendas&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="008"><Data ss:Type="String">Emissor da ordem*&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="009"><Data ss:Type="String">Recebedor da mercadoria&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="010"><Data ss:Type="String">Referência de cliente&#10;&#10;Tipo: Texto&#10;Comprimento: 20</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="011"><Data ss:Type="String">Data de referência de cliente&#10;&#10;Tipo: Data</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="012"><Data ss:Type="String">Descrição&#10;&#10;Tipo: Texto&#10;Comprimento: 40</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="013"><Data ss:Type="String">Início da validade&#10;&#10;Tipo: Data</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="014"><Data ss:Type="String">Fim da validade&#10;&#10;Tipo: Data</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="015"><Data ss:Type="String">Data do preço&#10;&#10;Tipo: Data</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="016"><Data ss:Type="String">Bloqueio de faturamento&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="017"><Data ss:Type="String">Motivo da ordem&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="018"><Data ss:Type="String">Condição de expedição&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="019"><Data ss:Type="String">Elemento PEP&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13); -- na última linha colocar somente CHR(13), pois o put_line adiciona o CHR(10
+     --
+     RETURN v_aux;
+  END fnc_InitWorksheetCabecalho;
+  --
+  -- Função que fecha a Worksheet Cabeçalho, chamada após o ponto onde
+  -- ocorreu a inclusão dos dados.
+  FUNCTION fnc_EndWorksheetCabecalho RETURN VARCHAR2
+  IS
+    v_aux VARCHAR2(32000);
+  BEGIN
+     v_aux := '    </Table>' ||CHR(13)||CHR(10)||
+              '    <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">' ||CHR(13)||CHR(10)||
+              '      <PageSetup>' ||CHR(13)||CHR(10)||
+              '        <Header x:Margin="0.3"/>' ||CHR(13)||CHR(10)||
+              '        <Footer x:Margin="0.3"/>' ||CHR(13)||CHR(10)||
+              '        <PageMargins x:Bottom="0.75" x:Left="0.7" x:Right="0.7" x:Top="0.75"/>' ||CHR(13)||CHR(10)||
+              '      </PageSetup>' ||CHR(13)||CHR(10)||
+              '      <Unsynced/>' ||CHR(13)||CHR(10)||
+              '      <Print>' ||CHR(13)||CHR(10)||
+              '        <ValidPrinterInfo/>' ||CHR(13)||CHR(10)||
+              '        <PaperSizeIndex>9</PaperSizeIndex>' ||CHR(13)||CHR(10)||
+              '        <HorizontalResolution>600</HorizontalResolution>' ||CHR(13)||CHR(10)||
+              '        <VerticalResolution>600</VerticalResolution>' ||CHR(13)||CHR(10)||
+              '      </Print>' ||CHR(13)||CHR(10)||
+              '      <TabColorIndex>51</TabColorIndex>' ||CHR(13)||CHR(10)||
+              '      <Selected/>' ||CHR(13)||CHR(10)||
+              '      <FreezePanes/>' ||CHR(13)||CHR(10)||
+              '      <FrozenNoSplit/>' ||CHR(13)||CHR(10)||
+              '      <SplitHorizontal>8</SplitHorizontal>' ||CHR(13)||CHR(10)||
+              '      <TopRowBottomPane>8</TopRowBottomPane>' ||CHR(13)||CHR(10)||
+              '      <SplitVertical>1</SplitVertical>' ||CHR(13)||CHR(10)||
+              '      <LeftColumnRightPane>1</LeftColumnRightPane>' ||CHR(13)||CHR(10)||
+              '      <ActivePane>0</ActivePane>' ||CHR(13)||CHR(10)||
+              '      <Panes>' ||CHR(13)||CHR(10)||
+              '        <Pane>' ||CHR(13)||CHR(10)||
+              '          <Number>3</Number>' ||CHR(13)||CHR(10)||
+              '        </Pane>' ||CHR(13)||CHR(10)||
+              '        <Pane>' ||CHR(13)||CHR(10)||
+              '          <Number>1</Number>' ||CHR(13)||CHR(10)||
+              '        </Pane>' ||CHR(13)||CHR(10)||
+              '        <Pane>' ||CHR(13)||CHR(10)||
+              '          <Number>2</Number>' ||CHR(13)||CHR(10)||
+              '        </Pane>' ||CHR(13)||CHR(10)||
+              '        <Pane>' ||CHR(13)||CHR(10)||
+              '          <Number>0</Number>' ||CHR(13)||CHR(10)||
+              '          <ActiveRow>7</ActiveRow>' ||CHR(13)||CHR(10)||
+              '          <ActiveCol>0</ActiveCol>' ||CHR(13)||CHR(10)||
+              '        </Pane>' ||CHR(13)||CHR(10)||
+              '      </Panes>' ||CHR(13)||CHR(10)||
+              '      <ProtectObjects>False</ProtectObjects>' ||CHR(13)||CHR(10)||
+              '      <ProtectScenarios>False</ProtectScenarios>' ||CHR(13)||CHR(10)||
+              '      <AllowSizeCols/>' ||CHR(13)||CHR(10)||
+              '      <AllowSizeRows/>' ||CHR(13)||CHR(10)||
+              '    </WorksheetOptions>' ||CHR(13)||CHR(10)||
+              '  </Worksheet>' ||CHR(13); -- na última linha colocar somente CHR(13), pois o put_line adiciona o CHR(10
+     --
+     RETURN v_aux;
+  END fnc_EndWorksheetCabecalho;
+  --
+  -- Função que recupera os dados de Contrato e monta as linhas de dados.
+  FUNCTION fnc_DadosCabecalho(p_p1   IN   VARCHAR2
+                             ,p_p2   IN   VARCHAR2
+                             ,p_p3   IN   VARCHAR2
+                             ,p_p4   IN   VARCHAR2
+                             ,p_p5   IN   VARCHAR2
+                             ,p_p6   IN   VARCHAR2
+                             ,p_p7   IN   VARCHAR2
+                             ,p_p8   IN   VARCHAR2
+                             ,p_p9   IN   VARCHAR2
+                             ,p_p10  IN   VARCHAR2
+                             ,p_p11  IN   VARCHAR2
+                             ,p_p12  IN   varchar2
+                             ,p_p13  IN   varchar2
+                             ,p_p14  IN   varchar2
+                             ,p_p15  IN   varchar2
+                             ,p_p16  IN   varchar2
+                             ,p_p17  IN   varchar2
+                             ,p_p18  IN   varchar2
+                             ,p_p19  IN   varchar2) RETURN VARCHAR2
+  IS
+     v_aux  VARCHAR2(32000);
+  BEGIN
+     v_aux := '   <Row ss:AutoFitHeight="0">' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p1 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p2 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p3 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p4 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p5 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p6 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p7 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p8 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p9 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p10|| '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p11|| '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p12|| '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p13|| '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p14|| '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p15|| '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p16|| '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p17|| '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p18|| '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p19|| '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '   </Row>' || CHR(13); -- na última linha colocar somente CHR(13), pois o put_line adiciona o CHR(10
+     --
+     RETURN v_aux;
+  END fnc_DadosCabecalho;
+  --
+  -- Worksheet Parceiros de cabeçalho adicion
+  -- Função que inicia a Worksheet Parceiros de cabeçalho adicion, interrompendo a criação
+  -- no ponto onde deve entrar a inclusão dos dados.
+  FUNCTION fnc_InitWorksheetParcCabecalho(p_ExpandedRowCount NUMBER) RETURN VARCHAR2
+  IS
+    v_ExpandedRowCount NUMBER(10) := 8;
+    v_aux VARCHAR2(32767);
+  BEGIN
+     v_ExpandedRowCount := (v_ExpandedRowCount + p_ExpandedRowCount);
+     --
+     v_aux := '  <Worksheet ss:Name="Parceiros de cabeçalho adicion" ss:Protected="1">' ||CHR(13)||CHR(10)||
+              '    <Table ss:ExpandedColumnCount="999" ss:ExpandedRowCount="'||v_ExpandedRowCount||'" x:FullColumns="1" x:FullRows="1" ss:StyleID="BACKGROUND" ss:DefaultRowHeight="15">' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:Height="30" ss:StyleID="TITLE">' ||CHR(13)||CHR(10)||
+              '        <Cell ss:MergeAcross="14">' ||CHR(13)||CHR(10)||
+              '          <Data ss:Type="String">Dados de origem para objeto de migração:  SD - Contrato de venda</Data>' ||CHR(13)||CHR(10)||
+              '        </Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:StyleID="VERSION">' ||CHR(13)||CHR(10)||
+              '        <Cell ss:MergeAcross="14">' ||CHR(13)||CHR(10)||
+              '          <Data ss:Type="String">Version S4CORE 106  - 26.04.2022 © Copyright SAP SE. All rights reserved.</Data>' ||CHR(13)||CHR(10)||
+              '        </Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:Height="12" ss:StyleID="BACKGROUND">' ||CHR(13)||CHR(10)||
+              '        <Cell ss:MergeAcross="14"/>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:Height="14.0625" ss:Hidden="1" ss:StyleID="BACKGROUND">' ||CHR(13)||CHR(10)||
+              '        <Cell>' ||CHR(13)||CHR(10)||
+              '          <Data ss:Type="String">S_SDCO_HPARTNER</Data>' ||CHR(13)||CHR(10)||
+              '        </Cell>' ||CHR(13)||CHR(10)||
+              '        <Cell/>' ||CHR(13)||CHR(10)||
+              '        <Cell/>' ||CHR(13)||CHR(10)||
+              '        <Cell/>' ||CHR(13)||CHR(10)||
+              '        <Cell/>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:Hidden="1">' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="001"><Data ss:Type="String">VBELN</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="002"><Data ss:Type="String">PARVW</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="003"><Data ss:Type="String">KUNNR</Data></Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:Hidden="1">' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="001"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="002"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="003"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0">' ||CHR(13)||CHR(10)||
+              '<Cell ss:MergeAcross="000" ss:StyleID="C_HEADER1"><Data ss:Type="String">Chave</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:MergeAcross="001" ss:StyleID="C_HEADER1"><Data ss:Type="String">Parcs.cabeç.</Data></Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0">' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="001"><Data ss:Type="String">ID do documento de contrato legado*&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="002"><Data ss:Type="String">Função de parceiro*&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="003"><Data ss:Type="String">Nº do cliente*&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13); -- na última linha colocar somente CHR(13), pois o put_line adiciona o CHR(10
+     --
+     RETURN v_aux;
+  END fnc_InitWorksheetParcCabecalho;
+  --
+  -- Função que fecha a Worksheet Cabeçalho, chamada após o ponto onde
+  -- ocorreu a inclusão dos dados.
+  FUNCTION fnc_EndWorksheetParcCabecalho RETURN VARCHAR2
+  IS
+    v_aux VARCHAR2(32000);
+  BEGIN
+     v_aux := '    </Table>' ||CHR(13)||CHR(10)||
+              '    <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">' ||CHR(13)||CHR(10)||
+              '      <PageSetup>' ||CHR(13)||CHR(10)||
+              '        <Header x:Margin="0.3"/>' ||CHR(13)||CHR(10)||
+              '        <Footer x:Margin="0.3"/>' ||CHR(13)||CHR(10)||
+              '        <PageMargins x:Bottom="0.75" x:Left="0.7" x:Right="0.7" x:Top="0.75"/>' ||CHR(13)||CHR(10)||
+              '      </PageSetup>' ||CHR(13)||CHR(10)||
+              '      <Unsynced/>' ||CHR(13)||CHR(10)||
+              '      <Print>' ||CHR(13)||CHR(10)||
+              '        <ValidPrinterInfo/>' ||CHR(13)||CHR(10)||
+              '        <PaperSizeIndex>9</PaperSizeIndex>' ||CHR(13)||CHR(10)||
+              '        <HorizontalResolution>600</HorizontalResolution>' ||CHR(13)||CHR(10)||
+              '        <VerticalResolution>600</VerticalResolution>' ||CHR(13)||CHR(10)||
+              '      </Print>' ||CHR(13)||CHR(10)||
+              '      <TabColorIndex>56</TabColorIndex>' ||CHR(13)||CHR(10)||
+              '      <Selected/>' ||CHR(13)||CHR(10)||
+              '      <FreezePanes/>' ||CHR(13)||CHR(10)||
+              '      <FrozenNoSplit/>' ||CHR(13)||CHR(10)||
+              '      <SplitHorizontal>8</SplitHorizontal>' ||CHR(13)||CHR(10)||
+              '      <TopRowBottomPane>8</TopRowBottomPane>' ||CHR(13)||CHR(10)||
+              '      <SplitVertical>1</SplitVertical>' ||CHR(13)||CHR(10)||
+              '      <LeftColumnRightPane>1</LeftColumnRightPane>' ||CHR(13)||CHR(10)||
+              '      <ActivePane>0</ActivePane>' ||CHR(13)||CHR(10)||
+              '      <Panes>' ||CHR(13)||CHR(10)||
+              '        <Pane>' ||CHR(13)||CHR(10)||
+              '          <Number>3</Number>' ||CHR(13)||CHR(10)||
+              '        </Pane>' ||CHR(13)||CHR(10)||
+              '        <Pane>' ||CHR(13)||CHR(10)||
+              '          <Number>1</Number>' ||CHR(13)||CHR(10)||
+              '        </Pane>' ||CHR(13)||CHR(10)||
+              '        <Pane>' ||CHR(13)||CHR(10)||
+              '          <Number>2</Number>' ||CHR(13)||CHR(10)||
+              '        </Pane>' ||CHR(13)||CHR(10)||
+              '        <Pane>' ||CHR(13)||CHR(10)||
+              '          <Number>0</Number>' ||CHR(13)||CHR(10)||
+              '          <ActiveRow>7</ActiveRow>' ||CHR(13)||CHR(10)||
+              '          <ActiveCol>0</ActiveCol>' ||CHR(13)||CHR(10)||
+              '        </Pane>' ||CHR(13)||CHR(10)||
+              '      </Panes>' ||CHR(13)||CHR(10)||
+              '      <ProtectObjects>False</ProtectObjects>' ||CHR(13)||CHR(10)||
+              '      <ProtectScenarios>False</ProtectScenarios>' ||CHR(13)||CHR(10)||
+              '      <AllowSizeCols/>' ||CHR(13)||CHR(10)||
+              '      <AllowSizeRows/>' ||CHR(13)||CHR(10)||
+              '    </WorksheetOptions>' ||CHR(13)||CHR(10)||
+              '  </Worksheet>' ||CHR(13); -- na última linha colocar somente CHR(13), pois o put_line adiciona o CHR(10
+     --
+     RETURN v_aux;
+  END fnc_EndWorksheetParcCabecalho;
+  --
+  -- Função que recupera os dados de Contrato e monta as linhas de dados.
+  FUNCTION fnc_DadosParcCabecalho(p_p1   IN   VARCHAR2
+                             ,p_p2   IN   VARCHAR2
+                             ,p_p3   IN   VARCHAR2) RETURN VARCHAR2
+  IS
+     v_aux  VARCHAR2(32000);
+  BEGIN
+     v_aux := '   <Row ss:AutoFitHeight="0">' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p1 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p2 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p3 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '   </Row>' || CHR(13); -- na última linha colocar somente CHR(13), pois o put_line adiciona o CHR(10
+     --
+     RETURN v_aux;
+  END fnc_DadosParcCabecalho;
+  --
+  -- Worksheet Item
+  -- Função que inicia a Worksheet Item, interrompendo a criação
+  -- no ponto onde deve entrar a inclusão dos dados.
+  FUNCTION fnc_InitWorksheetItem(p_ExpandedRowCount NUMBER) RETURN VARCHAR2
+  IS
+    -- Para cada DLT, verificar se o ExpandedRowCount é 8. A variável v_ExpandedRowCount
+    -- deve iniciar com o valor do ExpandedRowCount do DLT quando está vazio.
+    v_ExpandedRowCount NUMBER(10) := 8;
+    v_aux VARCHAR2(32767);
+  BEGIN
+     v_ExpandedRowCount := (v_ExpandedRowCount + p_ExpandedRowCount);
+     --
+     v_aux := '  <Worksheet ss:Name="Item" ss:Protected="1">' ||CHR(13)||CHR(10)||
+              '    <Table ss:ExpandedColumnCount="999" ss:ExpandedRowCount="'||v_ExpandedRowCount||'" x:FullColumns="1" x:FullRows="1" ss:StyleID="BACKGROUND" ss:DefaultRowHeight="15">' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="s001" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="s002" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="s003" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:Height="30" ss:StyleID="TITLE">' ||CHR(13)||CHR(10)||
+              '        <Cell ss:MergeAcross="14">' ||CHR(13)||CHR(10)||
+              '          <Data ss:Type="String">Dados de origem para objeto de migração:  SD - Contrato de venda</Data>' ||CHR(13)||CHR(10)||
+              '        </Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:StyleID="VERSION">' ||CHR(13)||CHR(10)||
+              '        <Cell ss:MergeAcross="14">' ||CHR(13)||CHR(10)||
+              '          <Data ss:Type="String">Version S4CORE 106  - 26.04.2022 © Copyright SAP SE. All rights reserved.</Data>' ||CHR(13)||CHR(10)||
+              '        </Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:Height="12" ss:StyleID="BACKGROUND">' ||CHR(13)||CHR(10)||
+              '        <Cell ss:MergeAcross="14"/>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:Height="14.0625" ss:Hidden="1" ss:StyleID="BACKGROUND">' ||CHR(13)||CHR(10)||
+              '        <Cell>' ||CHR(13)||CHR(10)||
+              '          <Data ss:Type="String">S_SDCO_ITEM</Data>' ||CHR(13)||CHR(10)||
+              '        </Cell>' ||CHR(13)||CHR(10)||
+              '        <Cell/>' ||CHR(13)||CHR(10)||
+              '        <Cell/>' ||CHR(13)||CHR(10)||
+              '        <Cell/>' ||CHR(13)||CHR(10)||
+              '        <Cell/>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:Hidden="1">' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="001"><Data ss:Type="String">VBELN</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="002"><Data ss:Type="String">POSNR</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="003"><Data ss:Type="String">MATNR</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="004"><Data ss:Type="String">ZMENG</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="005"><Data ss:Type="String">ZIEME</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="006"><Data ss:Type="String">ZWERT</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="007"><Data ss:Type="String">WAERK</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="008"><Data ss:Type="String">PROFIT_CTR</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="009"><Data ss:Type="String">WBS_ELEM</Data></Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:Hidden="1">' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="001"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="002"><Data ss:Type="String">ENU;6;0;N;6;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="003"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="004"><Data ss:Type="String">ENU;13;3;P;13;3</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="005"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="006"><Data ss:Type="String">ENU;28;2;P;28;2</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="007"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="008"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="009"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0">' ||CHR(13)||CHR(10)||
+              '<Cell ss:MergeAcross="001" ss:StyleID="C_HEADER1"><Data ss:Type="String">Chave</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:MergeAcross="000" ss:StyleID="C_HEADER1"><Data ss:Type="String">Material</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:MergeAcross="001" ss:StyleID="C_HEADER1"><Data ss:Type="String">Contrato em qtd.</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:MergeAcross="001" ss:StyleID="C_HEADER1"><Data ss:Type="String">Contrato em valor</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:MergeAcross="001" ss:StyleID="C_HEADER1"><Data ss:Type="String">Classificação contábil</Data></Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0">' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="001"><Data ss:Type="String">ID do documento de contrato legado*&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="002"><Data ss:Type="String">Número do item do documento de contrato*&#10;&#10;Tipo: Número&#10;Comprimento: 6</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="003"><Data ss:Type="String">Número do produto&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="004"><Data ss:Type="String">Quantidade prevista&#10;&#10;Tipo: Número&#10;Comprimento: 13&#10;Decimal: 3</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="005"><Data ss:Type="String">Unidade de medida&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="006"><Data ss:Type="String">Valor de destino&#10;&#10;Tipo: Número&#10;Comprimento: 28&#10;Decimal: 2</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="007"><Data ss:Type="String">Moeda&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="008"><Data ss:Type="String">Centro de lucro&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="009"><Data ss:Type="String">Elemento PEP&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13); -- na última linha colocar somente CHR(13), pois o put_line adiciona o CHR(10
+     --
+     RETURN v_aux;
+  END fnc_InitWorksheetItem;
+  --
+  -- Função que fecha a Worksheet Item, chamada após o ponto onde
+  -- ocorreu a inclusão dos dados.
+  FUNCTION fnc_EndWorksheetItem RETURN VARCHAR2
+  IS
+    v_aux VARCHAR2(32000);
+  BEGIN
+     v_aux := '    </Table>' ||CHR(13)||CHR(10)||
+              '    <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">' ||CHR(13)||CHR(10)||
+              '      <PageSetup>' ||CHR(13)||CHR(10)||
+              '        <Header x:Margin="0.3"/>' ||CHR(13)||CHR(10)||
+              '        <Footer x:Margin="0.3"/>' ||CHR(13)||CHR(10)||
+              '        <PageMargins x:Bottom="0.75" x:Left="0.7" x:Right="0.7" x:Top="0.75"/>' ||CHR(13)||CHR(10)||
+              '      </PageSetup>' ||CHR(13)||CHR(10)||
+              '      <Unsynced/>' ||CHR(13)||CHR(10)||
+              '      <Print>' ||CHR(13)||CHR(10)||
+              '        <ValidPrinterInfo/>' ||CHR(13)||CHR(10)||
+              '        <PaperSizeIndex>9</PaperSizeIndex>' ||CHR(13)||CHR(10)||
+              '        <HorizontalResolution>600</HorizontalResolution>' ||CHR(13)||CHR(10)||
+              '        <VerticalResolution>600</VerticalResolution>' ||CHR(13)||CHR(10)||
+              '      </Print>' ||CHR(13)||CHR(10)||
+              '      <TabColorIndex>51</TabColorIndex>' ||CHR(13)||CHR(10)||
+              '      <Selected/>' ||CHR(13)||CHR(10)||
+              '      <FreezePanes/>' ||CHR(13)||CHR(10)||
+              '      <FrozenNoSplit/>' ||CHR(13)||CHR(10)||
+              '      <SplitHorizontal>8</SplitHorizontal>' ||CHR(13)||CHR(10)||
+              '      <TopRowBottomPane>8</TopRowBottomPane>' ||CHR(13)||CHR(10)||
+              '      <SplitVertical>2</SplitVertical>' ||CHR(13)||CHR(10)||
+              '      <LeftColumnRightPane>2</LeftColumnRightPane>' ||CHR(13)||CHR(10)||
+              '      <ActivePane>0</ActivePane>' ||CHR(13)||CHR(10)||
+              '      <Panes>' ||CHR(13)||CHR(10)||
+              '        <Pane>' ||CHR(13)||CHR(10)||
+              '          <Number>3</Number>' ||CHR(13)||CHR(10)||
+              '        </Pane>' ||CHR(13)||CHR(10)||
+              '        <Pane>' ||CHR(13)||CHR(10)||
+              '          <Number>1</Number>' ||CHR(13)||CHR(10)||
+              '        </Pane>' ||CHR(13)||CHR(10)||
+              '        <Pane>' ||CHR(13)||CHR(10)||
+              '          <Number>2</Number>' ||CHR(13)||CHR(10)||
+              '        </Pane>' ||CHR(13)||CHR(10)||
+              '        <Pane>' ||CHR(13)||CHR(10)||
+              '          <Number>0</Number>' ||CHR(13)||CHR(10)||
+              '          <ActiveRow>7</ActiveRow>' ||CHR(13)||CHR(10)||
+              '          <ActiveCol>0</ActiveCol>' ||CHR(13)||CHR(10)||
+              '        </Pane>' ||CHR(13)||CHR(10)||
+              '      </Panes>' ||CHR(13)||CHR(10)||
+              '      <ProtectObjects>False</ProtectObjects>' ||CHR(13)||CHR(10)||
+              '      <ProtectScenarios>False</ProtectScenarios>' ||CHR(13)||CHR(10)||
+              '      <AllowSizeCols/>' ||CHR(13)||CHR(10)||
+              '      <AllowSizeRows/>' ||CHR(13)||CHR(10)||
+              '    </WorksheetOptions>' ||CHR(13)||CHR(10)||
+              '  </Worksheet>' ||CHR(13); -- na última linha colocar somente CHR(13), pois o put_line adiciona o CHR(10
+     --
+     RETURN v_aux;
+  END fnc_EndWorksheetItem;
+  --
+  -- Função que recupera os dados de Item e monta as linhas de dados.
+  FUNCTION fnc_DadosItem(p_p1   IN   VARCHAR2
+                        ,p_p2   IN   VARCHAR2
+                        ,p_p3   IN   VARCHAR2
+                        ,p_p4   IN   VARCHAR2
+                        ,p_p5   IN   VARCHAR2
+                        ,p_p6   IN   VARCHAR2
+                        ,p_p7   IN   VARCHAR2
+                        ,p_p8   IN   VARCHAR2
+                        ,p_p9   IN   VARCHAR2) RETURN VARCHAR2
+  IS
+     v_aux  VARCHAR2(32000);
+  BEGIN
+     v_aux := '   <Row ss:AutoFitHeight="0">' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p1 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p2 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p3 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p4 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p5 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p6 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p7 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p8 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p9 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '   </Row>' || CHR(13); -- na última linha colocar somente CHR(13), pois o put_line adiciona o CHR(10
+     --
+     RETURN v_aux;
+  END fnc_DadosItem;
+  --
+  -- Worksheet Parceiros Item
+  -- Função que inicia a Worksheet Parceiros Item, interrompendo a criação
+  -- no ponto onde deve entrar a inclusão dos dados.
+  FUNCTION fnc_InitWorksheetParceirosItem(p_ExpandedRowCount NUMBER) RETURN VARCHAR2
+  IS
+    -- Para cada DLT, verificar se o ExpandedRowCount é 8. A variável v_ExpandedRowCount
+    -- deve iniciar com o valor do ExpandedRowCount do DLT quando está vazio.
+    v_ExpandedRowCount NUMBER(10) := 8;
+    v_aux VARCHAR2(32767);
+  BEGIN
+     v_ExpandedRowCount := (v_ExpandedRowCount + p_ExpandedRowCount);
+     --
+     v_aux := '  <Worksheet ss:Name="Parceiros item" ss:Protected="1">' ||CHR(13)||CHR(10)||
+              '    <Table ss:ExpandedColumnCount="999" ss:ExpandedRowCount="'||v_ExpandedRowCount||'" x:FullColumns="1" x:FullRows="1" ss:StyleID="BACKGROUND" ss:DefaultRowHeight="15">' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="s004" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '<Column ss:StyleID="FIELD" ss:Width="120"/>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:Height="30" ss:StyleID="TITLE">' ||CHR(13)||CHR(10)||
+              '        <Cell ss:MergeAcross="14">' ||CHR(13)||CHR(10)||
+              '          <Data ss:Type="String">Dados de origem para objeto de migração:  SD - Contrato de venda</Data>' ||CHR(13)||CHR(10)||
+              '        </Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:StyleID="VERSION">' ||CHR(13)||CHR(10)||
+              '        <Cell ss:MergeAcross="14">' ||CHR(13)||CHR(10)||
+              '          <Data ss:Type="String">Version S4CORE 106  - 26.04.2022 © Copyright SAP SE. All rights reserved.</Data>' ||CHR(13)||CHR(10)||
+              '        </Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:Height="12" ss:StyleID="BACKGROUND">' ||CHR(13)||CHR(10)||
+              '        <Cell ss:MergeAcross="14"/>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:Height="14.0625" ss:Hidden="1" ss:StyleID="BACKGROUND">' ||CHR(13)||CHR(10)||
+              '        <Cell>' ||CHR(13)||CHR(10)||
+              '          <Data ss:Type="String">S_SDCO_IPARTNER</Data>' ||CHR(13)||CHR(10)||
+              '        </Cell>' ||CHR(13)||CHR(10)||
+              '        <Cell/>' ||CHR(13)||CHR(10)||
+              '        <Cell/>' ||CHR(13)||CHR(10)||
+              '        <Cell/>' ||CHR(13)||CHR(10)||
+              '        <Cell/>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:Hidden="1">' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="001"><Data ss:Type="String">VBELN</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="002"><Data ss:Type="String">POSNR</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="003"><Data ss:Type="String">PARVW</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="004"><Data ss:Type="String">KUNNR</Data></Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0" ss:Hidden="1">' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="001"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="002"><Data ss:Type="String">ENU;6;0;N;6;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="003"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:Index="004"><Data ss:Type="String">ETE;80;0;C;80;0</Data></Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0">' ||CHR(13)||CHR(10)||
+              '<Cell ss:MergeAcross="001" ss:StyleID="C_HEADER1"><Data ss:Type="String">Chave</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:MergeAcross="001" ss:StyleID="C_HEADER1"><Data ss:Type="String">Parceiro de item</Data></Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13)||CHR(10)||
+              '      <Row ss:AutoFitHeight="0">' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="001"><Data ss:Type="String">ID do documento de contrato legado*&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="002"><Data ss:Type="String">Número do item do documento de contrato*&#10;&#10;Tipo: Número&#10;Comprimento: 6</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="003"><Data ss:Type="String">Função de parceiro*&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '<Cell ss:StyleID="C_HEADER2" ss:Index="004"><Data ss:Type="String">Nº do cliente*&#10;&#10;Tipo: Texto&#10;Comprimento: 80</Data></Cell>' ||CHR(13)||CHR(10)||
+              '      </Row>' ||CHR(13); -- na última linha colocar somente CHR(13), pois o put_line adiciona o CHR(10
+     --
+     RETURN v_aux;
+  END fnc_InitWorksheetParceirosItem;
+  --
+  -- Função que fecha a Worksheet Parceiros Item, chamada após o ponto onde
+  -- ocorreu a inclusão dos dados.
+  FUNCTION fnc_EndWorksheetParceirosItem RETURN VARCHAR2
+  IS
+    v_aux VARCHAR2(32000);
+  BEGIN
+     v_aux := '    </Table>' ||CHR(13)||CHR(10)||
+              '    <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">' ||CHR(13)||CHR(10)||
+              '      <PageSetup>' ||CHR(13)||CHR(10)||
+              '        <Header x:Margin="0.3"/>' ||CHR(13)||CHR(10)||
+              '        <Footer x:Margin="0.3"/>' ||CHR(13)||CHR(10)||
+              '        <PageMargins x:Bottom="0.75" x:Left="0.7" x:Right="0.7" x:Top="0.75"/>' ||CHR(13)||CHR(10)||
+              '      </PageSetup>' ||CHR(13)||CHR(10)||
+              '      <Unsynced/>' ||CHR(13)||CHR(10)||
+              '      <Print>' ||CHR(13)||CHR(10)||
+              '        <ValidPrinterInfo/>' ||CHR(13)||CHR(10)||
+              '        <PaperSizeIndex>9</PaperSizeIndex>' ||CHR(13)||CHR(10)||
+              '        <HorizontalResolution>600</HorizontalResolution>' ||CHR(13)||CHR(10)||
+              '        <VerticalResolution>600</VerticalResolution>' ||CHR(13)||CHR(10)||
+              '      </Print>' ||CHR(13)||CHR(10)||
+              '      <TabColorIndex>56</TabColorIndex>' ||CHR(13)||CHR(10)||
+              '      <Selected/>' ||CHR(13)||CHR(10)||
+              '      <FreezePanes/>' ||CHR(13)||CHR(10)||
+              '      <FrozenNoSplit/>' ||CHR(13)||CHR(10)||
+              '      <SplitHorizontal>8</SplitHorizontal>' ||CHR(13)||CHR(10)||
+              '      <TopRowBottomPane>8</TopRowBottomPane>' ||CHR(13)||CHR(10)||
+              '      <SplitVertical>2</SplitVertical>' ||CHR(13)||CHR(10)||
+              '      <LeftColumnRightPane>2</LeftColumnRightPane>' ||CHR(13)||CHR(10)||
+              '      <ActivePane>0</ActivePane>' ||CHR(13)||CHR(10)||
+              '      <Panes>' ||CHR(13)||CHR(10)||
+              '        <Pane>' ||CHR(13)||CHR(10)||
+              '          <Number>3</Number>' ||CHR(13)||CHR(10)||
+              '        </Pane>' ||CHR(13)||CHR(10)||
+              '        <Pane>' ||CHR(13)||CHR(10)||
+              '          <Number>1</Number>' ||CHR(13)||CHR(10)||
+              '        </Pane>' ||CHR(13)||CHR(10)||
+              '        <Pane>' ||CHR(13)||CHR(10)||
+              '          <Number>2</Number>' ||CHR(13)||CHR(10)||
+              '        </Pane>' ||CHR(13)||CHR(10)||
+              '        <Pane>' ||CHR(13)||CHR(10)||
+              '          <Number>0</Number>' ||CHR(13)||CHR(10)||
+              '          <ActiveRow>7</ActiveRow>' ||CHR(13)||CHR(10)||
+              '          <ActiveCol>0</ActiveCol>' ||CHR(13)||CHR(10)||
+              '        </Pane>' ||CHR(13)||CHR(10)||
+              '      </Panes>' ||CHR(13)||CHR(10)||
+              '      <ProtectObjects>False</ProtectObjects>' ||CHR(13)||CHR(10)||
+              '      <ProtectScenarios>False</ProtectScenarios>' ||CHR(13)||CHR(10)||
+              '      <AllowSizeCols/>' ||CHR(13)||CHR(10)||
+              '      <AllowSizeRows/>' ||CHR(13)||CHR(10)||
+              '    </WorksheetOptions>' ||CHR(13)||CHR(10)||
+              '  </Worksheet>' ||CHR(13); -- na última linha colocar somente CHR(13), pois o put_line adiciona o CHR(10
+     --
+     RETURN v_aux;
+  END fnc_EndWorksheetParceirosItem;
+  --
+  -- Função que recupera os dados de Parceiros Item e monta as linhas de dados.
+  FUNCTION fnc_DadosParceirosItem(p_p1   IN   VARCHAR2
+                                 ,p_p2   IN   VARCHAR2
+                                 ,p_p3   IN   VARCHAR2
+                                 ,p_p4   IN   VARCHAR2) RETURN VARCHAR2
+  IS
+     v_aux  VARCHAR2(32000);
+  BEGIN
+     v_aux := '   <Row ss:AutoFitHeight="0">' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p1 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p2 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p3 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '     <Cell><Data ss:Type="String">' || p_p4 || '</Data></Cell>' ||CHR(13)||CHR(10)||
+              '   </Row>' || CHR(13); -- na última linha colocar somente CHR(13), pois o put_line adiciona o CHR(10
+     --
+     RETURN v_aux;
+  END fnc_DadosParceirosItem;
+BEGIN
+  -- 1º Passo - Abertura do arquivo.
+  dbms_output.put_line('Abrindo arquivo');
+  v_file := utl_file.FOPEN_NCHAR(location=> 'EXTERNAL_TABLE', filename=> 'DLT_RISE_C2C_Contrato_de_venda.xml', open_mode=> 'W', max_linesize=> 32767);
+
+
+  -- 2º Passo - Declaração de abertura de um arquivo XML.
+  dbms_output.put_line('incluindo linha');
+  utl_file.PUT_LINE_NCHAR(v_file, pkg_xml_std_fnc.fnc_header_xml() );
+
+
+  -- 3º Passo - abrindo a tag <Workbook>.
+  dbms_output.put_line('incluindo workbook');
+  utl_file.PUT_LINE_NCHAR(v_file, pkg_xml_std_fnc.fnc_init_workbook() );
+
+
+  -- 4º Passo - Incluindo a tag <DocumentProperties> completa.
+  dbms_output.put_line('incluindo DocumentProperties');
+  utl_file.PUT_LINE_NCHAR(v_file, pkg_xml_std_fnc.fnc_DocumentProperties(p_Title      => 'BANK_2'
+                                                                        ,p_Author     => 'SANDOVAL'
+                                                                        ,p_Keywords   => 'Standard Scope'
+                                                                        ,p_LastAuthor => 'SANDOVAL'
+                                                                        ,p_Created    => '20220426'
+                                                                        ,p_Company    => 'SANDOVAL'
+                                                                        ,p_Version    => '16.00' ) );
+
+
+  -- 5º Passo - Incluindo a tag <CustomDocumentProperties> completa.
+  dbms_output.put_line('incluindo CustomDocumentProperties');
+  utl_file.PUT_LINE_NCHAR(v_file, pkg_xml_std_fnc.fnc_CustomDocumentProperties(p_application => 'SLO'
+                                                                              ,p_object_name => 'Banco'
+                                                                              ,p_version     => 'S4CORE 106  - 26.04.2022'
+                                                                              ,p_system      => 'DS4 / 200'
+                                                                              ,p_language    => 'P') );
+
+
+  -- 6º Passo - Incluindo a tag <OfficeDocumentProperties> completa.
+  dbms_output.put_line('incluindo OfficeDocumentSettings');
+  utl_file.PUT_LINE_NCHAR(v_file, pkg_xml_std_fnc.fnc_OfficeDocumentSettings() );
+
+
+  -- 7º Passo - Incluindo a tag <ExcelWorkbook> completa.
+  dbms_output.put_line('incluindo ExcelWorkbook');
+  utl_file.PUT_LINE_NCHAR(v_file, pkg_xml_std_fnc.fnc_ExcelWorkbook (p_WindowHeight     => '14385'
+                                                                    ,p_WindowWidth      => '18960'
+                                                                    ,p_WindowTopX       => '120'
+                                                                    ,p_WindowTopY       => '120'
+                                                                    ,p_ActiveSheet      => '0'
+                                                                    ,p_RefModeR1C1      => ''
+                                                                    ,p_ProtectStructure => 'False'
+                                                                    ,p_ProtectWindows   => 'False') );
+
+
+  -- 8º Passo - Incluindo a tag <OfficeDocumentSettings> completa.
+  dbms_output.put_line('incluindo OfficeDocumentSettings');
+  utl_file.PUT_LINE_NCHAR(v_file, pkg_xml_std_fnc.fnc_OfficeDocumentSettings() );
+
+
+  -- 9º Passo - Incluindo a tag <Styles> completa.
+  dbms_output.put_line('incluindo Styles');
+  utl_file.PUT_LINE_NCHAR(v_file, fnc_Styles() );
+
+
+  -- 10º Passo - Incluindo a tag <Names> completa.
+  dbms_output.put_line('incluindo Names');
+  utl_file.PUT_LINE_NCHAR(v_file, pkg_xml_std_fnc.fnc_Names() );
+
+
+  -- 11º Passo - Incluindo a tag <Worksheet Introdução> completa.
+  dbms_output.put_line('incluindo Worksheet Introdução');
+  l_offset := 1;
+  v_reg_clob := pkg_xml_std_fnc.fnc_WorksheetIntro();
+  l_length := NVL( DBMS_LOB.getlength( v_reg_clob ), 0 );
+  --
+  WHILE (l_offset < l_length) LOOP
+    UTL_FILE.PUT_NCHAR( v_file, DBMS_LOB.SUBSTR( v_reg_clob, l_amt, l_offset ) );
+    UTL_FILE.fflush( v_file );
+    l_offset := l_offset + l_amt;
+  END LOOP;
+
+
+  -- 12º Passo - Incluindo a tag <Worksheet Lista de campos> completa.
+  dbms_output.put_line('incluindo Worksheet Lista de campos');
+  l_offset := 1;
+  v_reg_clob := fnc_WorksheetListaCampos();
+  l_length := NVL( DBMS_LOB.getlength( v_reg_clob ), 0 );
+  --
+  WHILE (l_offset < l_length) LOOP
+    UTL_FILE.PUT_NCHAR( v_file, DBMS_LOB.SUBSTR( v_reg_clob, l_amt, l_offset ) );
+    UTL_FILE.fflush( v_file );
+    l_offset := l_offset + l_amt;
+  END LOOP;
+
+
+  -- Criação das worksheets - INÍCIO
+  --
+  -- 13º Passo - Worksheets
+  -- Contar os registros da tabela antes, para passar como parâmetro para a função
+  --
+  -- Abertura da tag <Worksheet Cabecalho>
+  dbms_output.put_line('incluindo abertura tag Worksheet Cabecalho');
+  --
+  SELECT NVL(COUNT(*), 0)
+    INTO v_total_lines
+    FROM interface_sap.tb_contrato_vendas;
+  --
+  utl_file.PUT_LINE_NCHAR(v_file, fnc_InitWorksheetCabecalho(p_ExpandedRowCount => v_total_lines) );
+
+  -- 14º Passo - Inclusão dos dados de Cabeçalho.
+  dbms_output.put_line('incluindo dados da Worksheet Cabecalho');
+  FOR r1 IN c1 LOOP
+      utl_file.PUT_LINE_NCHAR(v_file, fnc_DadosCabecalho( p_p1  => r1.contrato_id
+                                                         ,p_p2  => r1.tp_contrato
+                                                         ,p_p3  => r1.org_vendas
+                                                         ,p_p4  => r1.canal_distr
+                                                         ,p_p5  => r1.divisao
+                                                         ,p_p6  => r1.escrit_vendas
+                                                         ,p_p7  => r1.equipe_vendas
+                                                         ,p_p8  => r1.emissor_ordem
+                                                         ,p_p9  => r1.recebedor_merc
+                                                         ,p_p10 => r1.refer_cliente
+                                                         ,p_p11 => r1.refer_cliente_dt
+                                                         ,p_p12 => r1.descr
+                                                         ,p_p13 => r1.dt_ini_val
+                                                         ,p_p14 => r1.dt_fim_val
+                                                         ,p_p15 => r1.dt_preco
+                                                         ,p_p16 => r1.bloq_fatura
+                                                         ,p_p17 => r1.motivo_ordem
+                                                         ,p_p18 => r1.cond_expedicao
+                                                         ,p_p19 => r1.elem_pep ) );
+  END LOOP;
+
+  -- 15º Passo - Fechamento da tag <Worksheet Cabecalho>
+  dbms_output.put_line('fechando tag Worksheet Cabecalho');
+  utl_file.PUT_LINE_NCHAR(v_file, fnc_EndWorksheetCabecalho() );
+  -- *************************************************************************************************
+  --
+  -- Abertura da tag <Worksheet Parceiros de cabeçalho adicion>
+  dbms_output.put_line('incluindo abertura tag Worksheet Parceiros de cabeçalho adicion');
+  --
+  SELECT NVL(COUNT(*), 0)
+    INTO v_total_lines
+    FROM interface_sap.tb_contrato_vendas_parc;
+  --
+  utl_file.PUT_LINE_NCHAR(v_file, fnc_InitWorksheetParcCabecalho(p_ExpandedRowCount => v_total_lines) );
+
+  -- 14º Passo - Inclusão dos dados de Parceiros de cabeçalho adicion.
+  dbms_output.put_line('incluindo dados da Worksheet Parceiros de cabeçalho adicion');
+  FOR r1 IN c2 LOOP
+      utl_file.PUT_LINE_NCHAR(v_file, fnc_DadosParcCabecalho( p_p1  => r1.contrato_id
+                                                             ,p_p2  => r1.func_parc
+                                                             ,p_p3  => r1.cliente ) );
+  END LOOP;
+
+  -- 15º Passo - Fechamento da tag <Worksheet Parceiros de cabeçalho adicion>
+  dbms_output.put_line('fechando tag Worksheet Parceiros de cabeçalho adicion');
+  utl_file.PUT_LINE_NCHAR(v_file, fnc_EndWorksheetParcCabecalho() );
+  -- *************************************************************************************************
+  --
+  -- Abertura da tag <Worksheet Item>
+  dbms_output.put_line('incluindo abertura tag Worksheet Item');
+  --
+  SELECT NVL(COUNT(*), 0)
+    INTO v_total_lines
+    FROM interface_sap.tb_contrato_vendas_item;
+  --
+  utl_file.PUT_LINE_NCHAR(v_file, fnc_InitWorksheetItem(p_ExpandedRowCount => v_total_lines) );
+
+  -- 14º Passo - Inclusão dos dados de Item
+  dbms_output.put_line('incluindo dados da Worksheet Item');
+  FOR r1 IN c3 LOOP
+      utl_file.PUT_LINE_NCHAR(v_file, fnc_DadosItem( p_p1  => r1.contrato_id
+                                                    ,p_p2  => r1.item_no
+                                                    ,p_p3  => r1.prod_no
+                                                    ,p_p4  => r1.qtd_prev
+                                                    ,p_p5  => r1.unid_med
+                                                    ,p_p6  => r1.valor_dest
+                                                    ,p_p7  => r1.moeda
+                                                    ,p_p8  => r1.centro_lucro
+                                                    ,p_p9  => r1.elem_pep ) );
+  END LOOP;
+
+  -- 15º Passo - Fechamento da tag <Worksheet Item>
+  dbms_output.put_line('fechando tag Worksheet Item');
+  utl_file.PUT_LINE_NCHAR(v_file, fnc_EndWorksheetItem() );
+  -- *************************************************************************************************
+  --
+  -- Abertura da tag <Worksheet Parceiros item>
+  dbms_output.put_line('incluindo abertura tag Worksheet Parceiros item');
+  --
+  SELECT NVL(COUNT(*), 0)
+    INTO v_total_lines
+    FROM interface_sap.tb_contrato_vendas_item_parc;
+  --
+  utl_file.PUT_LINE_NCHAR(v_file, fnc_InitWorksheetParceirosItem(p_ExpandedRowCount => v_total_lines) );
+
+  -- 14º Passo - Inclusão dos dados de Parceiros item
+  dbms_output.put_line('incluindo dados da Worksheet Parceiros item');
+  FOR r1 IN c4 LOOP
+      utl_file.PUT_LINE_NCHAR(v_file, fnc_DadosParceirosItem( p_p1  => r1.contrato_id
+                                                             ,p_p2  => r1.item_no
+                                                             ,p_p3  => r1.func_parc
+                                                             ,p_p4  => r1.cliente ) );
+  END LOOP;
+
+  -- 15º Passo - Fechamento da tag <Worksheet Parceiros item>
+  dbms_output.put_line('fechando tag Worksheet Parceiros item');
+  utl_file.PUT_LINE_NCHAR(v_file, fnc_EndWorksheetParceirosItem() );
+  -- *************************************************************************************************
+
+  --
+  --
+  -- Criação das worksheets - FINAL
+
+
+  -- 16º Passo - Incluindo a tag de encerramento <Workbook>.
+  dbms_output.put_line('fechando tag Workbook');
+  utl_file.PUT_LINE_NCHAR(v_file, pkg_xml_std_fnc.fnc_end_workbook() );
+
+
+  -- 17º Passo - Incluindo a tag <ExcelWorkbook> completa.
+  dbms_output.put_line('Fechando arquivo');
+  utl_file.FCLOSE(v_file);
+
+  dbms_output.put_line('Terminou');
+EXCEPTION
+  WHEN others THEN
+    utl_file.FCLOSE(v_file);
+    dbms_output.put_line('Erro: ' || sqlerrm) ;
+END prc_dlt_rise_c2c_contrato_venda;
